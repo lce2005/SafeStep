@@ -1,0 +1,101 @@
+import cv2
+import mediapipe as mp
+import numpy as np
+from collections import deque
+
+# 설정값
+FALL_VEL_THRESH = 0.35   # y축 낙하 속도 임계
+TILT_ANGLE_THRESH = 45   # 어깨-엉덩이 라인 기울기 임계 (deg)
+ASPECT_THRESH = 1.0      # 세로/가로 비율 임계
+HIST_LEN = 5             # 속도 계산용 히스토리 프레임 길이
+
+mp_pose = mp.solutions.pose
+mp_drawing = mp.solutions.drawing_utils
+
+def get_angle_deg(p1, p2):
+    # p1, p2: (x, y)
+    dx = p2[0] - p1[0]
+    dy = p2[1] - p1[1]
+    ang = np.degrees(np.arctan2(dy, dx))
+    # 어깨-엉덩이 라인을 세로 기준으로 보기 위해 90도 보정
+    return abs(90 - abs(ang))
+
+def main():
+    cap = cv2.VideoCapture(0)
+    pose = mp_pose.Pose(
+        static_image_mode=False,
+        model_complexity=1,
+        enable_segmentation=False,
+        min_detection_confidence=0.5,
+        min_tracking_confidence=0.5
+    )
+
+    y_hist = deque(maxlen=HIST_LEN)
+    fall_flag = False
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        h, w, _ = frame.shape
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        res = pose.process(rgb)
+
+        if res.pose_landmarks:
+            lm = res.pose_landmarks.landmark
+            # 관심 관절: 코(0), 양쪽 어깨(11,12), 양쪽 엉덩이(23,24)
+            nose = (lm[0].x, lm[0].y)
+            l_sh = (lm[11].x, lm[11].y)
+            r_sh = (lm[12].x, lm[12].y)
+            l_hip = (lm[23].x, lm[23].y)
+            r_hip = (lm[24].x, lm[24].y)
+
+            # 중심 y 평균
+            y_center = np.mean([nose[1], l_sh[1], r_sh[1], l_hip[1], r_hip[1]])
+            y_hist.append(y_center)
+            vel = 0
+            if len(y_hist) >= 2:
+                vel = y_hist[-1] - y_hist[-2]  # 프레임 간 y 변화(아래로 갈수록 +)
+
+            # 기울기: 양쪽 어깨 중간과 엉덩이 중간
+            mid_sh = ((l_sh[0]+r_sh[0])/2, (l_sh[1]+r_sh[1])/2)
+            mid_hip = ((l_hip[0]+r_hip[0])/2, (l_hip[1]+r_hip[1])/2)
+            tilt = get_angle_deg(mid_sh, mid_hip)  # 0에 가까울수록 누움
+
+            # 바운딩 박스 (관절 전체)
+            xs = [p.x for p in lm]
+            ys = [p.y for p in lm]
+            x_min, x_max = max(min(xs), 0), min(max(xs), 1)
+            y_min, y_max = max(min(ys), 0), min(max(ys), 1)
+            bw = (x_max - x_min) * w
+            bh = (y_max - y_min) * h
+            aspect = bh / (bw + 1e-6)  # 세로/가로
+
+            # 조건
+            fast_drop = vel > FALL_VEL_THRESH
+            low_tilt = tilt <= TILT_ANGLE_THRESH
+            flat_box = aspect <= ASPECT_THRESH
+
+            fall_flag = fast_drop and low_tilt and flat_box
+
+            # 시각화
+            mp_drawing.draw_landmarks(frame, res.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+            cv2.putText(frame, f"vel: {vel:.3f}", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+            cv2.putText(frame, f"tilt: {tilt:.1f}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+            cv2.putText(frame, f"aspect: {aspect:.2f}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+
+        status = "FALL" if fall_flag else "OK"
+        color = (0,0,255) if fall_flag else (0,255,0)
+        cv2.putText(frame, status, (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 3)
+        cv2.imshow("SafeStep Fall Detection", frame)
+
+        key = cv2.waitKey(1) & 0xFF
+        if key == ord('q'):
+            break
+
+    cap.release()
+    cv2.destroyAllWindows()
+
+if __name__ == "__main__":
+    main()
