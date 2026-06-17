@@ -22,6 +22,11 @@ def get_angle_deg(p1, p2):
 
 def main():
     cap = cv2.VideoCapture(0)
+
+    fps = cap.get(cv2.CAP_PROP_FPS)#카메라에서 FPS를 가져옴
+    if fps <= 1e-3:#드라이버/카메라가 FPS를 못 가져오는 경우
+        fps = 30.0
+
     pose = mp_pose.Pose(
         static_image_mode=False,
         model_complexity=1,
@@ -50,14 +55,24 @@ def main():
             r_sh = (lm[12].x, lm[12].y)
             l_hip = (lm[23].x, lm[23].y)
             r_hip = (lm[24].x, lm[24].y)
+            l_knee = (lm[25].x, lm[25].y) #무릎 관절 추가
+            r_knee = (lm[26].x, lm[26].y)
+            l_ank = (lm[27].x, lm[27].y) #발목 관절 추가
+            r_ank = (lm[28].x, lm[28].y)
 
             # 중심 y 평균
-            y_center = np.mean([nose[1], l_sh[1], r_sh[1], l_hip[1], r_hip[1]])
+            y_center = np.mean([
+                nose[1],
+                l_sh[1], r_sh[1],
+                l_hip[1], r_hip[1],
+                l_knee[1], r_knee[1],
+                l_ank[1], r_ank[1],
+            ])
             y_hist.append(y_center)
+
             vel = 0
             if len(y_hist) >= 2:
-                vel = y_hist[-1] - y_hist[-2]  # 프레임 간 y 변화(아래로 갈수록 +)
-
+                vel = (y_hist[-1] - y_hist[-2]) * fps  # 초당 y 변화량(아래 +)
             # 기울기: 양쪽 어깨 중간과 엉덩이 중간
             mid_sh = ((l_sh[0]+r_sh[0])/2, (l_sh[1]+r_sh[1])/2)
             mid_hip = ((l_hip[0]+r_hip[0])/2, (l_hip[1]+r_hip[1])/2)
@@ -81,6 +96,15 @@ def main():
 
             # 시각화
             mp_drawing.draw_landmarks(frame, res.pose_landmarks, mp_pose.POSE_CONNECTIONS)
+
+            # 가상의 박스 그리기
+            cv2.rectangle(
+                frame,
+                (int(x_min * w), int(y_min * h)),
+                (int(x_max * w), int(y_max * h)),
+                (255, 0, 0), 2
+            )
+            
             cv2.putText(frame, f"vel: {vel:.3f}", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
             cv2.putText(frame, f"tilt: {tilt:.1f}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
             cv2.putText(frame, f"aspect: {aspect:.2f}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
