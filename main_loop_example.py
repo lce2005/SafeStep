@@ -1,4 +1,9 @@
-from stt_tts_interaction import EmergencyInteraction, PrintSpeaker, ConsoleSpeechListener
+from stt_tts_interaction import (
+    ConsoleMovementMonitor,
+    ConsoleSpeechListener,
+    EmergencyInteraction,
+    PrintSpeaker,
+)
 
 
 def detect_stair_area(frame) -> bool:
@@ -21,6 +26,8 @@ def main() -> None:
     interaction = EmergencyInteraction(
         speaker=PrintSpeaker(),
         listener=ConsoleSpeechListener(),
+        # 실제 통합 시 MediaPipe 좌표 기반 움직임 감지 함수로 교체합니다.
+        movement_monitor=ConsoleMovementMonitor(),
     )
 
     frame = None

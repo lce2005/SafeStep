@@ -28,20 +28,26 @@ class SequenceListener:
 
 
 class InteractionLogicTest(unittest.TestCase):
-    def run_flow(self, answers, is_danger_area):
+    def run_flow(self, answers, is_danger_area, movement_detected=True):
         speaker = SilentSpeaker()
         reported = []
+        monitored_seconds = []
 
         def on_report(result: InteractionResult):
             reported.append(result)
+
+        def monitor_movement(duration_seconds):
+            monitored_seconds.append(duration_seconds)
+            return movement_detected
 
         interaction = EmergencyInteraction(
             speaker=speaker,
             listener=SequenceListener(answers),
             emergency_callback=on_report,
+            movement_monitor=monitor_movement,
         )
         result = interaction.handle_fall(is_danger_area=is_danger_area)
-        return result, speaker.messages, reported
+        return result, speaker.messages, reported, monitored_seconds
 
     def test_condition_keywords(self):
         self.assertEqual(classify_condition("괜찮아"), "ok")
@@ -58,7 +64,7 @@ class InteractionLogicTest(unittest.TestCase):
         self.assertEqual(classify_report_intent("괜찮아 필요 없어"), "no")
 
     def test_ok_answer_ends_with_advice(self):
-        result, messages, reported = self.run_flow(
+        result, messages, reported, _ = self.run_flow(
             answers=[SpeechAnswer(text="괜찮아", status="text")],
             is_danger_area=True,
         )
@@ -69,7 +75,7 @@ class InteractionLogicTest(unittest.TestCase):
         self.assertIn("병원 방문", messages[-1])
 
     def test_not_ok_and_yes_reports(self):
-        result, _, reported = self.run_flow(
+        result, _, reported, _ = self.run_flow(
             answers=[
                 SpeechAnswer(text="아파", status="text"),
                 SpeechAnswer(text="응 빨리", status="text"),
@@ -82,7 +88,7 @@ class InteractionLogicTest(unittest.TestCase):
         self.assertEqual(len(reported), 1)
 
     def test_not_ok_and_no_ends(self):
-        result, _, reported = self.run_flow(
+        result, _, reported, _ = self.run_flow(
             answers=[
                 SpeechAnswer(text="도와줘", status="text"),
                 SpeechAnswer(text="아니 신고하지마", status="text"),
@@ -94,24 +100,73 @@ class InteractionLogicTest(unittest.TestCase):
         self.assertEqual(result.emergency_stage, "USER_DECLINED_REPORT")
         self.assertFalse(reported)
 
-    def test_no_response_in_danger_area_reports(self):
-        result, _, reported = self.run_flow(
+    def test_no_response_in_danger_area_reports_immediately(self):
+        result, _, reported, monitored_seconds = self.run_flow(
             answers=[SpeechAnswer(text=None, status="no_response")],
             is_danger_area=True,
+            movement_detected=False,
         )
 
         self.assertTrue(result.should_call_emergency)
         self.assertEqual(result.emergency_stage, "AUTO_REPORT_NO_RESPONSE_DANGER_AREA")
         self.assertEqual(len(reported), 1)
+        self.assertEqual(monitored_seconds, [])
 
-    def test_no_response_in_safe_area_ends(self):
-        result, _, reported = self.run_flow(
+    def test_no_response_without_movement_in_safe_area_reports_after_three_minutes(self):
+        result, _, reported, monitored_seconds = self.run_flow(
             answers=[SpeechAnswer(text=None, status="no_response")],
+            is_danger_area=False,
+            movement_detected=False,
+        )
+
+        self.assertTrue(result.should_call_emergency)
+        self.assertEqual(result.emergency_stage, "AUTO_REPORT_NO_MOVEMENT_3_MINUTES")
+        self.assertEqual(len(reported), 1)
+        self.assertEqual(monitored_seconds, [180])
+
+    def test_no_response_and_movement_ends_without_report(self):
+        result, _, reported, monitored_seconds = self.run_flow(
+            answers=[SpeechAnswer(text=None, status="no_response")],
+            is_danger_area=False,
+            movement_detected=True,
+        )
+
+        self.assertFalse(result.should_call_emergency)
+        self.assertEqual(result.emergency_stage, "NO_RESPONSE_MOVEMENT_DETECTED")
+        self.assertFalse(reported)
+        self.assertEqual(monitored_seconds, [180])
+
+    def test_no_response_to_report_question_uses_movement_monitor(self):
+        result, _, reported, monitored_seconds = self.run_flow(
+            answers=[
+                SpeechAnswer(text="아파", status="text"),
+                SpeechAnswer(text=None, status="no_response"),
+            ],
+            is_danger_area=False,
+            movement_detected=False,
+        )
+
+        self.assertTrue(result.should_call_emergency)
+        self.assertEqual(result.emergency_stage, "AUTO_REPORT_NO_MOVEMENT_3_MINUTES")
+        self.assertEqual(len(reported), 1)
+        self.assertEqual(monitored_seconds, [180])
+
+    def test_microphone_error_is_reported_as_stt_error(self):
+        result, messages, reported, _ = self.run_flow(
+            answers=[
+                SpeechAnswer(
+                    text=None,
+                    status="error",
+                    error="마이크 장치를 찾을 수 없음",
+                )
+            ],
             is_danger_area=False,
         )
 
         self.assertFalse(result.should_call_emergency)
-        self.assertEqual(result.emergency_stage, "NO_RESPONSE_SAFE_AREA")
+        self.assertEqual(result.emergency_stage, "STT_ERROR")
+        self.assertIn("마이크", result.reason)
+        self.assertIn("마이크 설정", messages[-1])
         self.assertFalse(reported)
 
 

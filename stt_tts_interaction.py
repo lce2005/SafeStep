@@ -25,6 +25,7 @@ except ImportError:  # pragma: no cover - optional runtime dependency
 
 
 EMERGENCY_NUMBER = "119"
+NO_RESPONSE_MONITOR_SECONDS = 180
 
 
 @dataclass
@@ -76,6 +77,8 @@ class GTTSpeaker:
 
             while pygame.mixer.music.get_busy():
                 time.sleep(0.1)
+        except Exception as exc:
+            print("[TTS] 음성 출력 오류:", exc)
         finally:
             try:
                 pygame.mixer.quit()
@@ -91,6 +94,15 @@ class ConsoleSpeechListener:
         if not text:
             return SpeechAnswer(text=None, status="no_response")
         return SpeechAnswer(text=text, status="text")
+
+
+class ConsoleMovementMonitor:
+    def __call__(self, duration_seconds: int) -> bool:
+        minutes = duration_seconds // 60
+        answer = input(
+            f"[움직임 감지 시뮬레이션] {minutes}분 안에 움직임이 있었습니까? (y/n): "
+        ).strip().lower()
+        return answer in {"y", "yes", "예", "네", "응", "있음"}
 
 
 class GoogleSpeechListener:
@@ -136,6 +148,18 @@ class GoogleSpeechListener:
             return SpeechAnswer(text=None, status="unknown")
         except sr.RequestError as exc:
             return SpeechAnswer(text=None, status="error", error=str(exc))
+        except OSError as exc:
+            return SpeechAnswer(
+                text=None,
+                status="error",
+                error=f"마이크 장치를 사용할 수 없습니다: {exc}",
+            )
+        except Exception as exc:
+            return SpeechAnswer(
+                text=None,
+                status="error",
+                error=f"음성 입력 초기화에 실패했습니다: {exc}",
+            )
 
 
 def normalize_korean(text: Optional[str]) -> str:
@@ -248,11 +272,15 @@ class EmergencyInteraction:
         speaker: Optional[object] = None,
         listener: Optional[object] = None,
         emergency_callback: Optional[Callable[[InteractionResult], None]] = None,
+        movement_monitor: Optional[Callable[[int], bool]] = None,
+        no_response_monitor_seconds: int = NO_RESPONSE_MONITOR_SECONDS,
         retry_on_unknown: int = 1,
     ) -> None:
         self.speaker = speaker or GTTSpeaker()
         self.listener = listener or GoogleSpeechListener()
         self.emergency_callback = emergency_callback or self._default_emergency_callback
+        self.movement_monitor = movement_monitor
+        self.no_response_monitor_seconds = no_response_monitor_seconds
         self.retry_on_unknown = retry_on_unknown
 
     def handle_fall(self, is_danger_area: bool) -> InteractionResult:
@@ -261,6 +289,16 @@ class EmergencyInteraction:
         first_answer = self._listen_with_retry(
             retry_prompt="답변을 이해하지 못했습니다. 괜찮으시면 괜찮다고 말씀해 주세요.",
         )
+
+        if first_answer.status == "error":
+            self._say("음성 인식 장치를 사용할 수 없습니다. 마이크 설정을 확인해 주세요.")
+            return InteractionResult(
+                should_call_emergency=False,
+                emergency_stage="STT_ERROR",
+                reason=first_answer.error or "음성 인식 오류",
+                is_danger_area=is_danger_area,
+            )
+
         condition = classify_condition(first_answer.text)
 
         if first_answer.status == "no_response" or condition == "no_response":
@@ -291,7 +329,25 @@ class EmergencyInteraction:
         report_answer = self._listen_with_retry(
             retry_prompt="신고를 원하시면 네, 원하지 않으시면 아니요라고 말씀해 주세요.",
         )
+
+        if report_answer.status == "error":
+            self._say("음성 인식 장치를 사용할 수 없습니다. 주변 사람에게 도움을 요청해 주세요.")
+            return InteractionResult(
+                should_call_emergency=False,
+                emergency_stage="STT_ERROR",
+                reason=report_answer.error or "신고 의사 확인 중 음성 인식 오류",
+                first_answer=first_answer.text,
+                is_danger_area=is_danger_area,
+            )
+
         intent = classify_report_intent(report_answer.text)
+
+        if intent == "no_response":
+            return self._handle_no_response(
+                is_danger_area,
+                first_answer,
+                report_answer=report_answer,
+            )
 
         if intent == "yes":
             result = InteractionResult(
@@ -342,26 +398,57 @@ class EmergencyInteraction:
         self,
         is_danger_area: bool,
         first_answer: SpeechAnswer,
+        report_answer: Optional[SpeechAnswer] = None,
     ) -> InteractionResult:
         if is_danger_area:
+            self._say("위험 장소에서 응답이 확인되지 않아 즉시 신고합니다.")
             result = InteractionResult(
                 should_call_emergency=True,
                 emergency_stage="AUTO_REPORT_NO_RESPONSE_DANGER_AREA",
-                reason="무응답이며 위험 장소로 판단됨",
+                reason="위험 장소에서 무응답으로 판단되어 즉시 신고함",
                 first_answer=first_answer.text,
+                report_answer=report_answer.text if report_answer else None,
                 is_danger_area=is_danger_area,
             )
             self._report(result)
             return result
 
-        self._say("응답이 확인되지 않았습니다. 안전한 장소라면 주변 사람에게 도움을 요청해 주세요.")
-        return InteractionResult(
-            should_call_emergency=False,
-            emergency_stage="NO_RESPONSE_SAFE_AREA",
-            reason="무응답이지만 비위험 장소로 판단됨",
+        self._say("응답이 확인되지 않았습니다. 3분 동안 움직임을 확인하겠습니다.")
+
+        if self.movement_monitor is None:
+            self._say("움직임 감지 모듈이 연결되지 않았습니다.")
+            return InteractionResult(
+                should_call_emergency=False,
+                emergency_stage="MOVEMENT_MONITOR_UNAVAILABLE",
+                reason="무응답 후 움직임 감지 모듈이 연결되지 않음",
+                first_answer=first_answer.text,
+                report_answer=report_answer.text if report_answer else None,
+                is_danger_area=is_danger_area,
+            )
+
+        movement_detected = self.movement_monitor(self.no_response_monitor_seconds)
+
+        if movement_detected:
+            self._say("움직임이 확인되어 신고 절차를 종료합니다.")
+            return InteractionResult(
+                should_call_emergency=False,
+                emergency_stage="NO_RESPONSE_MOVEMENT_DETECTED",
+                reason="무응답 후 3분 이내 움직임이 감지됨",
+                first_answer=first_answer.text,
+                report_answer=report_answer.text if report_answer else None,
+                is_danger_area=is_danger_area,
+            )
+
+        result = InteractionResult(
+            should_call_emergency=True,
+            emergency_stage="AUTO_REPORT_NO_MOVEMENT_3_MINUTES",
+            reason="무응답 후 3분 동안 움직임이 감지되지 않음",
             first_answer=first_answer.text,
+            report_answer=report_answer.text if report_answer else None,
             is_danger_area=is_danger_area,
         )
+        self._report(result)
+        return result
 
     def _listen_with_retry(self, retry_prompt: str) -> SpeechAnswer:
         answer = self.listener.listen()
@@ -398,8 +485,12 @@ class EmergencyInteraction:
 
 def build_interaction(mode: str) -> EmergencyInteraction:
     if mode == "console":
-        return EmergencyInteraction(speaker=PrintSpeaker(), listener=ConsoleSpeechListener())
-    return EmergencyInteraction()
+        return EmergencyInteraction(
+            speaker=PrintSpeaker(),
+            listener=ConsoleSpeechListener(),
+            movement_monitor=ConsoleMovementMonitor(),
+        )
+    return EmergencyInteraction(movement_monitor=ConsoleMovementMonitor())
 
 
 def main() -> None:
