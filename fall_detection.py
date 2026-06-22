@@ -4,9 +4,9 @@ import numpy as np
 from collections import deque
 
 # 설정값
-FALL_VEL_THRESH = 0.35   # y축 낙하 속도 임계
-TILT_ANGLE_THRESH = 45   # 어깨-엉덩이 라인 기울기 임계 (deg)
-ASPECT_THRESH = 1.0      # 세로/가로 비율 임계
+FALL_VEL_THRESH = 0.28   # y축 낙하 속도 임계
+TILT_ANGLE_THRESH = 60   # 어깨-엉덩이 라인 기울기 임계 (deg)
+ASPECT_THRESH = 1.3      # 세로/가로 비율 임계
 HIST_LEN = 5             # 속도 계산용 히스토리 프레임 길이
 
 mp_pose = mp.solutions.pose
@@ -35,7 +35,9 @@ def main():
         min_tracking_confidence=0.5
     )
 
-    y_hist = deque(maxlen=HIST_LEN)
+    y_hist = deque(maxlen=HIST_LEN) 
+
+    fall_counter = 0 # 낙상 감지 카운터
     fall_flag = False
 
     while True:
@@ -46,6 +48,9 @@ def main():
         h, w, _ = frame.shape
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         res = pose.process(rgb)
+
+        # 이번 프레임에서 최종 조건을 충족했는지 판별할 변수 초기화
+        is_falling_now = False
 
         if res.pose_landmarks:
             lm = res.pose_landmarks.landmark
@@ -92,7 +97,7 @@ def main():
             low_tilt = tilt <= TILT_ANGLE_THRESH
             flat_box = aspect <= ASPECT_THRESH
 
-            fall_flag = fast_drop and low_tilt and flat_box
+            is_falling_now = fast_drop and low_tilt and flat_box#현재 프레임에서 낙상 조건 충족 여부
 
             # 시각화
             mp_drawing.draw_landmarks(frame, res.pose_landmarks, mp_pose.POSE_CONNECTIONS)
@@ -108,15 +113,32 @@ def main():
             cv2.putText(frame, f"vel: {vel:.3f}", (20, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
             cv2.putText(frame, f"tilt: {tilt:.1f}", (20, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
             cv2.putText(frame, f"aspect: {aspect:.2f}", (20, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,255), 2)
+        
+
+        #지속 시간 체크 로직 연동
+        if is_falling_now:
+            fall_counter += 1
+        else:
+            # 이미 30프레임 이상 누워있어서 확정 FALL 상태가 되었다면, 
+            # 중간에 노이즈로 잠깐 부르르 떨어도 FALL 상태를 유지하기 위해 30 미만일 때만 리셋
+            if fall_counter < 30: 
+                fall_counter = max(0, fall_counter - 1)
+        fall_flag = fall_counter >= 30  # 30프레임 이상 조건 충족 시 낙상 확정
+
 
         status = "FALL" if fall_flag else "OK"
         color = (0,0,255) if fall_flag else (0,255,0)
+
         cv2.putText(frame, status, (20, 130), cv2.FONT_HERSHEY_SIMPLEX, 1.0, color, 3)
+        cv2.putText(frame, f"counter: {fall_counter}/30", (20, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255,255,255), 2)
+        
         cv2.imshow("SafeStep Fall Detection", frame)
 
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'):
             break
+        if cv2.getWindowProperty("SafeStep Fall Detection", cv2.WND_PROP_VISIBLE) < 1:
+            break#창이 닫히면 루프 종료
 
     cap.release()
     cv2.destroyAllWindows()
