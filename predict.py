@@ -1,3 +1,5 @@
+# 계단/평지 예측 파일 
+# stair -> True , ground -> False
 from pillow_heif import register_heif_opener
 register_heif_opener()
 
