@@ -6,7 +6,7 @@ import re
 import tempfile
 import time
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
 try:
     import speech_recognition as sr
@@ -47,6 +47,12 @@ class InteractionResult:
     first_answer: Optional[str] = None
     report_answer: Optional[str] = None
     is_danger_area: bool = False
+
+
+FallProcessor = Callable[[Any, float], Any]
+DangerDetector = Callable[[Any], bool]
+FrameProvider = Callable[[], Any]
+FpsProvider = Callable[[], float]
 
 
 class PrintSpeaker:
@@ -160,6 +166,80 @@ class GoogleSpeechListener:
                 status="error",
                 error=f"음성 입력 초기화에 실패했습니다: {exc}",
             )
+
+
+def load_default_fall_processor() -> FallProcessor:
+    from fall_detector import process_fall_detection
+
+    return process_fall_detection
+
+
+def _read_bool_from_detection_result(result: Any) -> bool:
+    if isinstance(result, bool):
+        return result
+
+    if isinstance(result, dict):
+        for key in ("is_fall", "fall_detected", "fall_flag", "is_falling", "fall"):
+            if key in result:
+                return bool(result[key])
+        raise ValueError("낙상 감지 결과 dict에 낙상 여부 키가 없습니다.")
+
+    if isinstance(result, (tuple, list)):
+        if not result:
+            return False
+        return _read_bool_from_detection_result(result[0])
+
+    for attr in ("is_fall", "fall_detected", "fall_flag", "is_falling", "fall"):
+        if hasattr(result, attr):
+            return bool(getattr(result, attr))
+
+    return bool(result)
+
+
+def process_fall_frame(
+    frame: Any,
+    fps: float,
+    is_danger_area: bool,
+    interaction: "EmergencyInteraction",
+    fall_processor: Optional[FallProcessor] = None,
+) -> Optional[InteractionResult]:
+    processor = fall_processor or load_default_fall_processor()
+    fall_result = processor(frame, fps)
+    is_fall = _read_bool_from_detection_result(fall_result)
+
+    if not is_fall:
+        return None
+
+    return interaction.handle_fall(is_danger_area=is_danger_area)
+
+
+class FallProcessorMovementMonitor:
+    def __init__(
+        self,
+        frame_provider: FrameProvider,
+        fps_provider: FpsProvider,
+        fall_processor: Optional[FallProcessor] = None,
+        check_interval_seconds: float = 0.5,
+    ) -> None:
+        self.frame_provider = frame_provider
+        self.fps_provider = fps_provider
+        self.fall_processor = fall_processor or load_default_fall_processor()
+        self.check_interval_seconds = check_interval_seconds
+
+    def __call__(self, duration_seconds: int) -> bool:
+        end_time = time.monotonic() + duration_seconds
+
+        while time.monotonic() < end_time:
+            frame = self.frame_provider()
+            fps = self.fps_provider()
+            fall_result = self.fall_processor(frame, fps)
+
+            if not _read_bool_from_detection_result(fall_result):
+                return True
+
+            time.sleep(self.check_interval_seconds)
+
+        return False
 
 
 def normalize_korean(text: Optional[str]) -> str:
