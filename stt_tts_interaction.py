@@ -169,7 +169,7 @@ class GoogleSpeechListener:
 
 
 def load_default_fall_processor() -> FallProcessor:
-    from fall_detector import process_fall_detection
+    from fall_detection import process_fall_detection
 
     return process_fall_detection
 
@@ -179,7 +179,14 @@ def _read_bool_from_detection_result(result: Any) -> bool:
         return result
 
     if isinstance(result, dict):
-        for key in ("is_fall", "fall_detected", "fall_flag", "is_falling", "fall"):
+        for key in (
+            "is_fall",
+            "fall_detected",
+            "fall_detection",
+            "fall_flag",
+            "is_falling",
+            "fall",
+        ):
             if key in result:
                 return bool(result[key])
         raise ValueError("낙상 감지 결과 dict에 낙상 여부 키가 없습니다.")
@@ -189,7 +196,14 @@ def _read_bool_from_detection_result(result: Any) -> bool:
             return False
         return _read_bool_from_detection_result(result[0])
 
-    for attr in ("is_fall", "fall_detected", "fall_flag", "is_falling", "fall"):
+    for attr in (
+        "is_fall",
+        "fall_detected",
+        "fall_detection",
+        "fall_flag",
+        "is_falling",
+        "fall",
+    ):
         if hasattr(result, attr):
             return bool(getattr(result, attr))
 
@@ -199,16 +213,27 @@ def _read_bool_from_detection_result(result: Any) -> bool:
 def process_fall_frame(
     frame: Any,
     fps: float,
-    is_danger_area: bool,
     interaction: "EmergencyInteraction",
     fall_processor: Optional[FallProcessor] = None,
+    is_danger_area_override: Optional[bool] = None,
 ) -> Optional[InteractionResult]:
     processor = fall_processor or load_default_fall_processor()
     fall_result = processor(frame, fps)
+
+    # process_fall_detection returns (fall_flag, stair_detected, frame)
     is_fall = _read_bool_from_detection_result(fall_result)
 
     if not is_fall:
         return None
+
+    # 3-tuple이면 두 번째 요소가 stair_detected (위험 장소 여부)
+    if isinstance(fall_result, (tuple, list)) and len(fall_result) >= 2:
+        is_danger_area = bool(fall_result[1])
+    else:
+        is_danger_area = False
+
+    if is_danger_area_override is not None:
+        is_danger_area = is_danger_area_override
 
     return interaction.handle_fall(is_danger_area=is_danger_area)
 
@@ -570,7 +595,10 @@ def build_interaction(mode: str) -> EmergencyInteraction:
             listener=ConsoleSpeechListener(),
             movement_monitor=ConsoleMovementMonitor(),
         )
-    return EmergencyInteraction(movement_monitor=ConsoleMovementMonitor())
+
+    from fall_detection import monitor_movement
+
+    return EmergencyInteraction(movement_monitor=monitor_movement)
 
 
 def main() -> None:
