@@ -1,3 +1,4 @@
+# 파일 형식 변경용
 from pillow_heif import register_heif_opener
 from PIL import Image
 import os
