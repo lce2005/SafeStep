@@ -1,3 +1,4 @@
+# webcam , 영상으로 테스트하려고 만든 파일!
 import cv2
 from PIL import Image
 from predict import predict_image
