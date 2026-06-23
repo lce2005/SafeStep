@@ -1,11 +1,12 @@
 import cv2
 import mediapipe as mp
 import numpy as np
+import time  # 시간 측정을 위해 추가
 from collections import deque
 
 from predict import is_stair 
 
-FALL_VEL_THRESH = 0.28   # 초당 y 낙하 속도
+FALL_VEL_THRESH = 0.28    # 초당 y 낙하 속도
 TILT_ANGLE_THRESH = 60    # 어깨-골반 라인 각도(누울수록 0)
 ASPECT_THRESH = 1.3       # 세로/가로 비율
 HIST_LEN = 5              # 속도 계산용 히스토리
@@ -25,6 +26,12 @@ pose = mp_pose.Pose(
 y_hist = deque(maxlen=HIST_LEN)
 fall_counter = 0
 
+shared_cap = None
+
+def set_camera(cap_object):
+    global shared_cap
+    shared_cap = cap_object
+
 def get_angle_deg(p1, p2):
     dx = p2[0] - p1[0]
     dy = p2[1] - p1[1]
@@ -32,10 +39,6 @@ def get_angle_deg(p1, p2):
     return abs(90 - abs(ang))
 
 def process_fall_detection(frame, fps=30.0):
-    """
-    프레임(frame)을 넣으면 내부에서 계단 여부를 먼저 판별하고, 
-    낙상 로직을 거친 뒤 최종 낙상 여부(True/False)와 시각화된 프레임을 반환합니다.
-    """
     global fall_counter, y_hist
     
     h, w, _ = frame.shape
@@ -124,3 +127,51 @@ def process_fall_detection(frame, fps=30.0):
     cv2.putText(frame, f"counter: {fall_counter}/{FALL_FRAMES}", (20, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
     return fall_flag, frame
+
+def monitor_movement(duration_seconds: int) -> bool:
+    global shared_cap
+    if shared_cap is None:
+        print("[경고] 카메라 객체가 설정되지 않았습니다. 메인 루프 시작 전 set_camera(cap)를 호출해야 합니다.")
+        return False
+
+    print(f"[모니터링 가동] {duration_seconds}초 동안 움직임 여부를 감지합니다...")
+    start_time = time.time()
+    
+    # 첫 프레임 기준점 잡기 및 노이즈 제거
+    ret, frame1 = shared_cap.read()
+    if not ret: return False
+    gray1 = cv2.cvtColor(frame1, cv2.COLOR_BGR2GRAY)
+    gray1 = cv2.GaussianBlur(gray1, (21, 21), 0)
+    
+    MOTION_PIXEL_THRESH = 8000  # 움직임 판단 임계값
+    
+    while time.time() - start_time < duration_seconds:
+        ret, frame2 = shared_cap.read()
+        if not ret: break
+            
+        gray2 = cv2.cvtColor(frame2, cv2.COLOR_BGR2GRAY)
+        gray2 = cv2.GaussianBlur(gray2, (21, 21), 0)
+        
+        # 프레임 차이 계산 및 이진화
+        diff = cv2.absdiff(gray1, gray2)
+        _, thresh = cv2.threshold(diff, 25, 255, cv2.THRESH_BINARY)
+        motion_count = cv2.countNonZero(thresh)
+        
+        # 움직임이 임계값을 넘으면 즉시 True 반환 후 종료
+        if motion_count > MOTION_PIXEL_THRESH:
+            print(f"[움직임 확인] 변화 크기: {motion_count}. 안전 구역 진입으로 판단하여 경보를 해제합니다.")
+            return True
+            
+        gray1 = gray2
+        
+        # 화면 피드백 유지
+        remain_time = duration_seconds - int(time.time() - start_time)
+        cv2.putText(frame2, f"Monitoring Movement... {remain_time}s left", 
+                    (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 0, 255), 3)
+        cv2.imshow("SafeStep Integrated System", frame2)
+        
+        if cv2.waitKey(1) & 0xFF == 27: # ESC 누르면 비상 탈출
+            break
+            
+    print(f"[모니터링 종료] {duration_seconds}초 동안 움직임이 전혀 없습니다. 최종 119 신고를 접수합니다.")
+    return False
