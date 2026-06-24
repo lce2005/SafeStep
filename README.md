@@ -14,13 +14,13 @@
 ## Table of Contents
 
 - [Overview](#overview)
-- [system-architecture](#system-architecture)
-- [emergency-protocols](#emergency-protocol)
-- [project-structure](#project-structure)
-- [requirements](#requirements)
-- [usage](#usage)
-- [#tech-stack](tech-stack)
-- [license](#license)
+- [System-architecture](#system-architecture)
+- [Emergency-protocols](#emergency-protocol)
+- [Project-structure](#project-structure)
+- [Requirements](#requirements)
+- [Usage](#usage)
+- [Tech-stack](tech-stack)
+- [License](#license)
 
 ## Overview
 
