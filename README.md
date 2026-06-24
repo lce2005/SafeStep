@@ -76,6 +76,9 @@ flowchart TD
 
 ```
 SafeStep/
+├── data/                    # 학습 데이터셋
+│   ├── stair/               # 계단 이미지
+│   └── ground/              # 평지 이미지
 ├── main.py                  # 메인 실행 파일 (전체 파이프라인 통합)
 ├── predict.py               # CNN 기반 계단/평지 분류 추론
 ├── fall_detection.py        # MediaPipe 기반 낙상 감지 + 움직임 모니터링
