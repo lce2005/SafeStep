@@ -56,7 +56,7 @@
 
 ## Emergency Protocol
 
-낙상이 감지된 후의 신고 판단 흐름은 아래와 같습니다.
+프로그램의 판단 흐름은 아래와 같습니다.
 
 ```mermaid
 flowchart TD
