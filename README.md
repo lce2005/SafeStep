@@ -20,6 +20,7 @@
 - [Requirements](#requirements)
 - [Usage](#usage)
 - [Tech-stack](tech-stack)
+- [theoretical-background](#theoretical-background)
 - [License](#license)
 
 ## Overview
