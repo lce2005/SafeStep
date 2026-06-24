@@ -90,16 +90,26 @@ SafeStep/
 
 ## Requirements
 
-- Python 3.8+
-- OpenCV
-- MediaPipe
-- PyTorch
-- SpeechRecognition
-- gTTS
-- pygame
+```
+Python >= 3.8
+```
+
+| 패키지 | 용도 |
+|---|---|
+| `opencv-python` | 웹캠 영상 입력 및 화면 렌더링 |
+| `mediapipe` | 실시간 인체 관절 좌표 추출 (Module 1) |
+| `numpy` | 관절 좌표 수치 계산 |
+| `torch` | PyTorch 딥러닝 프레임워크 (Module 2) |
+| `torchvision` | ResNet18 사전학습 모델 로드 |
+| `Pillow` | 이미지 전처리 |
+| `pillow-heif` | HEIF/HEIC 확장자 이미지 호환 |
+| `SpeechRecognition` | STT — 음성을 텍스트로 변환 (Module 3) |
+| `gTTS` | TTS — 텍스트를 음성으로 변환 |
+| `pygame` | TTS 음성 파일 재생 |
+| `PyAudio` | 마이크 하드웨어 접근 |
 
 ```bash
-pip install opencv-python mediapipe torch torchvision SpeechRecognition gTTS pygame numpy
+pip install opencv-python mediapipe numpy torch torchvision Pillow pillow-heif SpeechRecognition gTTS pygame PyAudio
 ```
 
 > **Note**: 음성 인식을 사용하려면 마이크가 연결되어 있어야 하며, Google STT API 사용을 위해 인터넷 연결이 필요합니다.
