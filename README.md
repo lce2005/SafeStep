@@ -19,7 +19,7 @@
 - [project-structure](#project-structure)
 - [requirements](#requirements)
 - [usage](#usage)
-- [#tech-stack](#tech-stack)
+- [#tech-stack](tech-stack)
 - [license](#license)
 
 ## Overview
