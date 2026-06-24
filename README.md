@@ -1,6 +1,17 @@
-# SafeStep
+<div align="center">
 
-계단 낙상을 실시간으로 감지하고, 음성 대화를 통해 자동으로 119에 신고하는 AI 기반 안전 시스템입니다.
+# SafeStep
+### Intelligent Fall Detection & Location-Aware Emergency Response System
+
+**MediaPipe · ResNet18 · TTS/STT · Real-time Vision**
+
+<br>
+
+[![Python](https://img.shields.io/badge/Python-3.8+-3776AB?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![PyTorch](https://img.shields.io/badge/PyTorch-2.0+-EE4C2C?style=flat-square&logo=pytorch&logoColor=white)](https://pytorch.org/)
+[![MediaPipe](https://img.shields.io/badge/MediaPipe-0.10+-00897B?style=flat-square&logo=google&logoColor=white)](https://mediapipe.dev/)
+[![OpenCV](https://img.shields.io/badge/OpenCV-4.x-5C3EE8?style=flat-square&logo=opencv&logoColor=white)](https://opencv.org/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=flat-square)](LICENSE)
 
 ## Overview
 
