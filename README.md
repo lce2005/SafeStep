@@ -1,5 +1,3 @@
-<div align="center">
-
 # SafeStep
 ### Intelligent Fall Detection & Location-Aware Emergency Response System
 
