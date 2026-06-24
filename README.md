@@ -18,9 +18,9 @@ SafeStep은 카메라 영상을 분석하여 세 가지 핵심 기능을 파이�
     ▼
 ┌─────────────────────┐
 │   predict.py        │  CNN (stair_classifier.pth)
-│   is_stair(frame)   │──── 계단? / 평지?
+│   is_stair(frame)   │──── 계단? / 평지? → 응급 프로토콜 분기 결정
 └────────┬────────────┘
-         │ 계단일 때만 ▼
+         │ 낙상 감지 ▼
 ┌─────────────────────┐
 │  fall_detection.py  │  MediaPipe Pose
 │  process_fall_      │──── 낙하 속도 / 기울기 / 종횡비
@@ -28,7 +28,7 @@ SafeStep은 카메라 영상을 분석하여 세 가지 핵심 기능을 파이�
 └────────┬────────────┘
          │ 낙상 확정 시 ▼
 ┌─────────────────────┐
-│  stt_tts_            │  Google STT + gTTS
+│  stt_tts_           │   Google STT + gTTS
 │  interaction.py     │──── "괜찮으세요?" → 응답 분석
 │  handle_fall()      │     → 신고 / 모니터링 / 종료
 └─────────────────────┘
