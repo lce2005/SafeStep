@@ -258,6 +258,103 @@ python main.py
 | 음성 출력 | Google Text-to-Speech (gTTS) |
 | 영상 처리 | OpenCV |
 
+## Theoretical Background
+
+### Module 1: Fall Detection — MediaPipe Pose
+
+**MediaPipe Pose**는 Google이 개발한 실시간 인체 자세 추정 라이브러리로,  
+단일 RGB 카메라 영상에서 **33개의 신체 랜드마크(관절 좌표)** 를 실시간으로 추출합니다.
+
+SafeStep은 아래 **3가지 조건을 만족**할 때 낙상으로 판정합니다.
+
+#### ① 골반-무릎 Y좌표 역전 감지
+
+정상 기립 상태에서는 골반(hip)의 Y좌표가 무릎(knee)보다 항상 위에 위치합니다.  
+낙상 시 이 관계가 역전됩니다.
+
+$$
+\text{Fall Condition 1}: \quad Y_{hip} \geq Y_{knee}
+$$
+
+#### ② 신체 중심축 기울기 분석
+
+어깨(shoulder)와 골반(hip)을 잇는 몸의 중심 라인이 지면과 이루는 각도를 계산합니다.  
+낙상 시 이 각도가 급격히 감소합니다.
+
+$$
+\theta = \arctan\left(\frac{Y_{shoulder} - Y_{hip}}{X_{shoulder} - X_{hip}}\right) \times \frac{180}{\pi}
+$$
+
+$$
+\text{Fall Condition 2}: \quad \theta \leq 50°
+$$
+
+#### ③ 바운딩 박스 종횡비 변화 감지
+
+신체를 감싸는 가상의 바운딩 박스(Bounding Box)의 종횡비(Aspect Ratio)를 실시간으로 추적합니다.  
+정상 상태(세로형)에서 낙상 상태(가로형)로 변할 때 비율이 감소합니다.
+
+$$
+\text{Aspect Ratio} = \frac{H_{bbox}}{W_{bbox}}
+$$
+
+$$
+\text{Fall Condition 3}: \quad \text{Aspect Ratio} \leq 1.5
+$$
+
+> **최종 판별**: 위 3가지 조건이 **만족**될 때 `Fallen State = True`로 판정합니다.
+
+---
+
+### Module 2: Location Classification — ResNet18 CNN
+
+#### ResNet (Residual Network) 이란?
+
+**ResNet**은 Microsoft Research가 2015년 발표한 딥러닝 모델로,  
+**잔차 연결(Residual Connection, Skip Connection)** 을 도입하여  
+매우 깊은 신경망에서도 기울기 소실(Vanishing Gradient) 문제를 해결한 혁신적인 CNN 구조입니다.
+
+#### 잔차 블록 (Residual Block)
+
+일반 CNN은 입력 $x$를 레이어에 통과시켜 $F(x)$를 학습합니다.  
+ResNet은 여기에 원본 입력 $x$를 더하는 **Skip Connection**을 추가합니다:
+
+$$
+\text{Output} = F(x) + x
+$$
+
+$$
+F(x) = W_2 \cdot \sigma(W_1 \cdot x + b_1) + b_2
+$$
+
+> 여기서 $\sigma$는 ReLU 활성화 함수, $W$는 가중치 행렬, $b$는 편향(bias)입니다.
+
+#### 전이 학습 (Transfer Learning)
+
+SafeStep은 **ImageNet으로 사전 학습된 ResNet18** 모델의 가중치를 가져와,  
+마지막 Fully Connected Layer만 **계단/평지 2-class 분류**에 맞게 교체하여 학습합니다.
+
+$$
+\text{Output} = \text{Softmax}(W_{fc} \cdot \text{features} + b_{fc}), \quad \text{classes} = \{\text{stairs},\ \text{ground}\}
+$$
+
+이 방식은 적은 데이터셋으로도 높은 분류 정확도를 달성할 수 있게 합니다.
+
+---
+
+### Module 3: Voice Interaction — TTS / STT
+
+#### STT (Speech-to-Text)
+
+**Google Speech Recognition API**를 활용하여 마이크로 입력된 사용자의 음성을 텍스트로 변환합니다.  
+`SpeechRecognition` 라이브러리의 **동적 주변 노이즈 조절(`adjust_for_ambient_noise`)** 을 적용하여  
+소음 환경에서도 인식률을 향상시킵니다.
+
+#### TTS (Text-to-Speech)
+
+**Google TTS(gTTS)** 를 활용하여 상황에 맞는 안내 멘트를 자연스러운 한국어 음성으로 변환하고,  
+`pygame`으로 재생합니다.
+
 ## License
 
 This project is licensed under the [MIT License](LICENSE).
