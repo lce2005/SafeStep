@@ -119,47 +119,123 @@ pip install opencv-python mediapipe numpy torch torchvision Pillow pillow-heif S
 
 ## Usage
 
-### 전체 시스템 실행
+### 1️. Git 설치 확인
+
+터미널을 열고 아래 명령어로 Git이 설치되어 있는지 확인하세요:
+
+```bash
+git --version
+```
+
+> Git이 없다면 [https://git-scm.com/downloads](https://git-scm.com/downloads) 에서 먼저 설치하세요.
+
+---
+
+### 2️. 프로젝트 다운로드
+
+#### 방법 1: Git Clone (권장)
+
+> **Git Clone이란?**  
+> 원격 GitHub 저장소의 모든 파일과 코드를 내 컴퓨터로 복사해오는 명령어입니다.  
+> 아래 명령어 한 줄로 프로젝트 전체를 내려받을 수 있습니다.
+
+```bash
+# 원하는 폴더로 이동 후 아래 명령어 입력
+git clone https://github.com/lce2005/SafeStep.git
+
+# 클론된 폴더로 이동
+cd SafeStep
+```
+
+#### 방법 2: ZIP 파일 다운로드 (Git 없이 간단하게)
+
+1. [https://github.com/lce2005/SafeStep](https://github.com/lce2005/SafeStep) 접속
+2. 초록색 **`<> Code`** 버튼 클릭
+3. **`Download ZIP`** 클릭하여 다운로드
+4. 다운로드된 ZIP 파일 압축 해제
+5. 압축 해제된 `SafeStep` 폴더를 터미널에서 열기
+
+---
+
+### 3️. 가상환경 생성 (권장)
+
+다른 프로젝트와 패키지 충돌을 방지하기 위해 가상환경 사용을 권장합니다.
+
+**Anaconda 사용 시 (권장):**
+```bash
+conda create -n safestep python=3.8 -y
+conda activate safestep
+```
+
+**venv 사용 시:**
+```bash
+# 가상환경 생성
+python -m venv venv
+
+# 가상환경 활성화
+source venv/bin/activate        # macOS / Linux
+venv\Scripts\activate           # Windows
+```
+
+---
+
+### 4️. 패키지 설치
+
+```bash
+pip install opencv-python mediapipe numpy torch torchvision Pillow pillow-heif SpeechRecognition gTTS pygame PyAudio
+```
+
+> **PyAudio 설치 오류 시 (Windows)**:
+> ```bash
+> pip install pipwin
+> pipwin install pyaudio
+> ```
+>
+> **PyAudio 설치 오류 시 (macOS)**:
+> ```bash
+> brew install portaudio
+> pip install pyaudio
+> ```
+
+---
+
+### 5️. 학습된 모델 가중치 배치
+
+`stair_classifier.pth` 파일을 프로젝트 루트 디렉토리에 위치시킵니다:
+
+```
+SafeStep/
+├── stair_classifier.pth      ← 여기에 배치
+├── main.py
+├── fall_detection.py
+├── stt_tts_interaction.py
+├── train_model.py
+├── predict.py
+├── predict_video.py
+└── ...
+```
+
+---
+
+### 6️. 실행
 
 ```bash
 python main.py
 ```
 
-카메라가 자동으로 켜지며, ESC 키를 누르면 종료됩니다.
+웹캠이 자동으로 켜지며 실시간 낙상 감지 및 장소 분류가 시작됩니다.
 
-### STT/TTS 단독 테스트
-
-키보드 입력으로 응급 대화 흐름을 테스트할 수 있습니다.
-
-```bash
-# 콘솔 모드 (키보드 입력으로 시뮬레이션)
-python stt_tts_interaction.py --mode console
-
-# 음성 모드 (실제 마이크 + 스피커)
-python stt_tts_interaction.py --mode voice
-
-# 위험 장소(계단) 시나리오 테스트
-python stt_tts_interaction.py --mode console --danger
-```
-
-### 모델 학습
-
-```bash
-python train_model.py
-```
-
-## Detection Parameters
+> **종료**: 실행 중 `esc` 키를 누르면 종료됩니다.
 
 `fall_detection.py`에서 조정할 수 있는 주요 임계값입니다.
 
 | 파라미터 | 기본값 | 설명 |
 |---|---|---|
-| `FALL_VEL_THRESH` | 0.28 | 초당 y축 낙하 속도 임계값 |
-| `TILT_ANGLE_THRESH` | 60° | 어깨-골반 기울기 각도 (낮을수록 누운 상태) |
-| `ASPECT_THRESH` | 1.3 | 바운딩 박스 세로/가로 비율 |
-| `FALL_FRAMES` | 30 | 낙상 연속 판정에 필요한 프레임 수 |
+| `TILT_ANGLE_THRESH` | 50 | 어깨-골반 라인 각도 |
+| `ASPECT_THRESH` | 1.5 | 바운딩 박스 세로/가로 비율 |
+| `FALL_FRAMES` | 10 | 낙상 연속 판정에 필요한 프레임 수 |
 
-세 가지 조건(빠른 낙하 + 낮은 기울기 + 낮은 종횡비)이 동시에 충족되고, `FALL_FRAMES` 프레임 연속으로 유지될 때 최종 낙상으로 판정합니다.
+조건이 동시에 충족되고, `FALL_FRAMES` 프레임 연속으로 유지될 때 최종 낙상으로 판정합니다.
 
 ## Tech Stack
 
